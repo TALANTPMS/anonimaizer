@@ -12,6 +12,16 @@ from PIL import Image, ImageFilter
 import logging
 logging.basicConfig(level=logging.INFO)
 
+# --- Try import OpenCV/numpy/pytesseract for face/text blur ---
+try:
+    import numpy as np
+    import cv2
+    import pytesseract
+    from pytesseract import Output
+    IMAGE_ADVANCED_SUPPORT = True
+except ImportError:
+    IMAGE_ADVANCED_SUPPORT = False
+
 # --- ENVIRONMENT ---
 GOOGLE_APPLICATION_CREDENTIALS = os.environ.get("GOOGLE_APPLICATION_CREDENTIALS")
 GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY")
@@ -35,11 +45,44 @@ def simple_anon_text(text):
     return text
 
 def blur_jpg_pillow(image_pil):
+    # На Vercel невозможно автоматически размывать лица/текст без OpenCV/numpy.
+    # Здесь блюрится всё изображение. Для Render используйте action.py.
+    return image_pil.filter(ImageFilter.GaussianBlur(radius=16))
+
+def blur_faces_and_text(image_pil):
+    if not IMAGE_ADVANCED_SUPPORT:
+        raise RuntimeError("Image anonymization is not supported: OpenCV/numpy/pytesseract not installed.")
+    image_np = np.array(image_pil.convert("RGB"))
+    image_cv = cv2.cvtColor(image_np, cv2.COLOR_RGB2BGR)
+    # --- Лица ---
     try:
-        return image_pil.filter(ImageFilter.GaussianBlur(radius=16))
+        gray = cv2.cvtColor(image_cv, cv2.COLOR_BGR2GRAY)
+        haar_path = cv2.data.haarcascades + "haarcascade_frontalface_default.xml"
+        face_cascade = cv2.CascadeClassifier(haar_path)
+        faces = face_cascade.detectMultiScale(gray, scaleFactor=1.1, minNeighbors=3, minSize=(30, 30))
+        for (x, y, w, h) in faces:
+            roi = image_cv[y:y+h, x:x+w]
+            if roi.size > 0:
+                blurred = cv2.GaussianBlur(roi, (99, 99), 30)
+                image_cv[y:y+h, x:x+w] = blurred
     except Exception as e:
-        logging.error(f"Ошибка блюра изображения: {e}")
-        raise
+        logging.warning(f"Face blur error: {e}")
+    # --- Текст (OCR pytesseract) ---
+    try:
+        data = pytesseract.image_to_data(image_pil, lang='rus+eng', output_type=Output.DICT)
+        n_boxes = len(data['level'])
+        for i in range(n_boxes):
+            if data['text'][i].strip():
+                x, y, w, h = data['left'][i], data['top'][i], data['width'][i], data['height'][i]
+                if w > 0 and h > 0:
+                    roi = image_cv[y:y+h, x:x+w]
+                    if roi.size > 0:
+                        blurred = cv2.GaussianBlur(roi, (31, 31), 0)
+                        image_cv[y:y+h, x:x+w] = blurred
+    except Exception as e:
+        logging.warning(f"OCR blur error: {e}")
+    result_pil = Image.fromarray(cv2.cvtColor(image_cv, cv2.COLOR_BGR2RGB))
+    return result_pil
 
 @app.route('/anon_text', methods=['POST'])
 def anon_text():
@@ -92,7 +135,10 @@ def anon_file():
             image = Image.open(file.stream)
             if image.format not in ['JPEG', 'JPG', 'PNG']:
                 return jsonify({'error': 'Файл не является поддерживаемым изображением (JPG/PNG).'}), 400
-            anonymized = blur_jpg_pillow(image)
+            if IMAGE_ADVANCED_SUPPORT:
+                anonymized = blur_faces_and_text(image)
+            else:
+                return jsonify({'error': 'Image anonymization is not supported: OpenCV/numpy/pytesseract not installed.'}), 400
             buf = io.BytesIO()
             anonymized.save(buf, format='PNG')
             buf.seek(0)

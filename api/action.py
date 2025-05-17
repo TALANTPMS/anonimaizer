@@ -39,15 +39,19 @@ def gemini_anon_text(text, features=None):
     """
     Анонимизация текста через Gemini API.
     """
-    feature_map = {
-        'names': '[ФИО]',
-        'contacts': '[ТЕЛЕФОН], [EMAIL]',
-        'dates': '[ДАТА]',
-        'ids': '[НОМЕР_ДОКУМЕНТА]',
-        'addresses': '[АДРЕС]'
-    }
+    # Привести features к списку, если это строка (например, из формы)
+    if isinstance(features, str):
+        try:
+            features = json.loads(features)
+        except Exception:
+            features = [features]
+    if features is not None and not isinstance(features, list):
+        features = [features]
+
+    # Если features пустой список — не анонимизировать ничего
     if features is not None and len(features) == 0:
         return text
+
     if features:
         tags, tag_desc = [], []
         if 'names' in features:
