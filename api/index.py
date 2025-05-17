@@ -9,6 +9,7 @@ from flask import Flask, request, jsonify
 from flask_cors import CORS
 from PIL import Image
 from PyPDF2 import PdfReader
+from docx import Document
 
 app = Flask(__name__)
 CORS(app)
@@ -97,9 +98,17 @@ def anon_file():
             return jsonify({'result': anon})
         except Exception as e:
             return jsonify({'error': f'Ошибка обработки PDF: {e}'}), 400
-    # DOCX (опционально, если нужен python-docx)
-    # elif filename.endswith('.docx'):
-    #     ...
+    # DOCX
+    elif filename.endswith('.docx'):
+        try:
+            doc = Document(file)
+            text = "\n".join([para.text for para in doc.paragraphs])
+            if not text.strip():
+                return jsonify({'result': ''})
+            anon = simple_anon_text(text)
+            return jsonify({'result': anon})
+        except Exception as e:
+            return jsonify({'error': f'Ошибка обработки DOCX: {e}'}), 400
     # Изображения (JPG, JPEG, PNG)
     elif filename.endswith(('.jpg', '.jpeg', '.png')):
         try:
@@ -113,7 +122,7 @@ def anon_file():
         except Exception as e:
             return jsonify({'error': f'Ошибка обработки изображения: {e}'}), 400
     else:
-        return jsonify({'error': 'Поддерживаются только TXT, PDF, JPG, PNG файлы'}), 400
+        return jsonify({'error': 'Поддерживаются только TXT, PDF, DOCX, JPG, PNG файлы'}), 400
 
 @app.route('/chat', methods=['POST'])
 def chat():
