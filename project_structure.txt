@@ -1,0 +1,19 @@
+d:\Савелий\Проекты\Проекты\AI_Hackathon\
+│
+├── api\
+│   ├── index.py
+│   └── action.py
+│
+├── public\
+│   └── index.html
+│
+├── credentials\
+│   └── google-cloud.json         # (в .gitignore, не хранится в репозитории)
+│
+├── requirements.txt
+├── .env
+├── .gitignore
+├── Procfile
+├── vercel.json
+├── README.md
+├── test.txt

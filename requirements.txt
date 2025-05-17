@@ -1,10 +1,9 @@
-flask==2.0.3
-flask-cors==3.0.10
-PyPDF2==3.0.1
-pillow==9.5.0
-python-docx==0.8.11
-numpy==1.24.3
-opencv-python-headless
-pytesseract==0.3.10
-gunicorn
-werkzeug==2.0.3
+flask>=2.2
+flask-cors>=3.0
+PyPDF2>=3.0
+pillow>=9.0
+python-docx>=0.8
+numpy>=1.24
+# opencv-python-headless и pytesseract закомментированы для Vercel, раскомментируйте если нужны и поддерживаются
+# opencv-python-headless
+# pytesseract

@@ -11,7 +11,11 @@ from PIL import Image
 from PyPDF2 import PdfReader
 from docx import Document
 
-app = Flask(__name__)
+# --- ENVIRONMENT ---
+GOOGLE_APPLICATION_CREDENTIALS = os.environ.get("GOOGLE_APPLICATION_CREDENTIALS")
+GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY")
+
+app = Flask(__name__, static_folder="../public", static_url_path="")
 CORS(app)
 
 # --- Текстовая анонимизация (простая, без внешних API) ---
@@ -139,18 +143,22 @@ def favicon():
 
 @app.route('/')
 def home():
-    # Корректно отдаём index.html из родительской директории
-    parent_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
-    return send_from_directory(parent_dir, 'index.html')
+    # Отдаём index.html из public/
+    public_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'public'))
+    return send_from_directory(public_dir, 'index.html')
 
 @app.route('/<path:path>')
 def static_proxy(path):
-    # Корректно отдаём любые статические файлы из родительской директории
-    parent_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
-    file_path = os.path.join(parent_dir, path)
+    # Отдаём любые статические файлы из public/
+    public_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'public'))
+    file_path = os.path.join(public_dir, path)
     if os.path.isfile(file_path):
-        return send_from_directory(parent_dir, path)
-    return 'Not Found', 404
+        return send_from_directory(public_dir, path)
+    # Если файл не найден — отдаём index.html (SPA fallback)
+    return send_from_directory(public_dir, 'index.html')
 
-# Vercel: экспортируем Flask app
-# (Vercel автоматически ищет переменную "app" в этом файле)
+# Для Vercel/Render: экспортируем Flask app
+# (Vercel/Render ищет переменную "app" в этом файле)
+if __name__ == "__main__":
+    port = int(os.environ.get("PORT", 5000))
+    app.run(host="0.0.0.0", port=port)

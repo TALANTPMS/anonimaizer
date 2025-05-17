@@ -1,0 +1,14 @@
+{
+    "version": 2,
+    "builds": [
+        {
+            "src": "api/index.py",
+            "use": "@vercel/python"
+        }
+    ],
+    "routes": [
+        { "src": "/(anon_text|anon_file|chat)", "dest": "api/index.py" },
+        { "src": "/(.*\\.(js|css|png|jpg|jpeg|svg|ico|woff2?|ttf|map|json|txt))", "dest": "public/$1" },
+        { "src": "/(.*)", "dest": "api/index.py" }
+    ]
+}

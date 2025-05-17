@@ -300,11 +300,18 @@ def chat():
 
 @app.route('/')
 def root():
-    return send_from_directory('.', 'index.html')
+    # Отдаём index.html из public/
+    public_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'public'))
+    return send_from_directory(public_dir, 'index.html')
 
 @app.route('/<path:path>')
 def static_proxy(path):
-    return send_from_directory('.', path)
+    # Отдаём любые статические файлы из public/
+    public_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'public'))
+    file_path = os.path.join(public_dir, path)
+    if os.path.isfile(file_path):
+        return send_from_directory(public_dir, path)
+    return send_from_directory(public_dir, 'index.html')
 
 if __name__ == '__main__':
     # Для локальной разработки

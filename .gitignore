@@ -6,4 +6,5 @@ venv/
 .vercel
 /credentials/
 credentials/*
-*.json
+.env
+/public/

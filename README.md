@@ -1,5 +1,16 @@
 # AI Privacy Assistant
 
+## Структура проекта
+
+- `api/` — Python backend (Flask)
+- `public/` — фронтенд (HTML, JS, CSS)
+- `credentials/` — приватные ключи (не коммитятся)
+- `.env` — переменные окружения
+- `requirements.txt` — зависимости Python
+- `Procfile` — для Render
+- `vercel.json` — для Vercel
+- `README.md` — инструкция
+
 ## Установка
 
 1. Клонируйте репозиторий
@@ -7,7 +18,31 @@
 3. Поместите файл учетных данных Google Cloud в `credentials/google-cloud.json`
 4. Создайте файл `.env` и добавьте необходимые переменные окружения:
 
-````markdown
+```env
+GOOGLE_APPLICATION_CREDENTIALS=./credentials/google-cloud.json
+GEMINI_API_KEY=ваш_ключ
+```
+
+5. Установите зависимости:
+
+```bash
+pip install -r requirements.txt
+```
+
+6. Для локального запуска:
+
+```bash
+python api/index.py
+```
+
+7. Для Render: используется Procfile, для Vercel — vercel.json.
+
+**Frontend** лежит в папке `public/`.  
+**Backend** — в папке `api/`.  
+В production статика отдаётся из `public/`, все API-запросы идут на Flask backend.
+
+## Важно
+
 Для работы вашего проекта установите необходимые зависимости:
 
 pip install flask flask-cors requests PyPDF2 pillow python-docx numpy opencv-python google-cloud-vision
@@ -57,4 +92,3 @@ google-cloud-vision
 > **Важно:**  
 > Переменная окружения должна быть установлена в том же окне, где запускается сервер.  
 > Если вы закроете окно — переменная исчезнет, и её нужно будет установить снова.
-````
