@@ -278,6 +278,12 @@ def static_proxy(path):
     # Если файл не найден — отдаём index.html (SPA fallback)
     return send_from_directory(public_dir, 'index.html')
 
+@app.errorhandler(Exception)
+def handle_exception(e):
+    import traceback
+    logging.error(f"UNCAUGHT ERROR: {e}\n{traceback.format_exc()}")
+    return jsonify({'error': f'Internal server error: {str(e)}'}), 500
+
 # Для Vercel: экспортируем Flask app
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5000))

@@ -1,5 +1,9 @@
-flask>=2.2
-flask-cors>=3.0
-PyPDF2>=3.0
-python-docx>=0.8
-pillow>=9.0
+flask
+flask-cors
+PyPDF2
+python-docx
+pillow
+numpy
+opencv-python-headless
+pytesseract
+requests
