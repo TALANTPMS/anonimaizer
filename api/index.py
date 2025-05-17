@@ -1,6 +1,5 @@
 from flask import Flask, request, jsonify
 from flask_cors import CORS
-import requests
 
 app = Flask(__name__)
 CORS(app)
@@ -29,5 +28,9 @@ def anon_file():
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 
-# This is crucial for Vercel
-app = app.wsgi_app
+@app.route('/favicon.ico')
+def favicon():
+    return '', 204
+
+# For Vercel: export Flask app object
+# ...no assignment to app.wsgi_app...
