@@ -7,6 +7,7 @@ from flask import Flask, request, jsonify, send_file, send_from_directory
 from flask_cors import CORS
 from PyPDF2 import PdfReader
 from docx import Document
+from PIL import Image, ImageFilter
 
 # --- ENVIRONMENT ---
 GOOGLE_APPLICATION_CREDENTIALS = os.environ.get("GOOGLE_APPLICATION_CREDENTIALS")
@@ -29,6 +30,10 @@ def simple_anon_text(text):
     for pat, repl in patterns:
         text = re.sub(pat, repl, text)
     return text
+
+def blur_jpg_pillow(image_pil):
+    # Примитивный блюр всего изображения (или можно реализовать crop/box)
+    return image_pil.filter(ImageFilter.GaussianBlur(radius=16))
 
 @app.route('/anon_text', methods=['POST'])
 def anon_text():
@@ -76,7 +81,16 @@ def anon_file():
             return jsonify({'error': f'Ошибка обработки DOCX: {e}'}), 400
     # Изображения (JPG, JPEG, PNG)
     elif filename.endswith(('.jpg', '.jpeg', '.png')):
-        return jsonify({'error': 'Image anonymization is not supported on Vercel. Use Render or local server for images.'}), 400
+        try:
+            image = Image.open(file.stream)
+            anonymized = blur_jpg_pillow(image)
+            buf = io.BytesIO()
+            anonymized.save(buf, format='PNG')
+            buf.seek(0)
+            img_base64 = base64.b64encode(buf.read()).decode('utf-8')
+            return jsonify({'result': 'data:image/png;base64,' + img_base64})
+        except Exception as e:
+            return jsonify({'error': f'Ошибка обработки изображения: {e}'}), 400
     else:
         return jsonify({'error': 'Поддерживаются только TXT, PDF, DOCX, JPG, PNG файлы'}), 400
 
@@ -84,10 +98,26 @@ def anon_file():
 def chat():
     data = request.get_json()
     message = data.get('message', '')
-    if not message.strip():
-        return jsonify({'reply': 'Пожалуйста, введите сообщение.'})
-    # Демоверсия: просто возвращаем текст
-    return jsonify({'reply': f'Вы написали: {message}'})
+    # Если есть файл (base64) — блюрить и вернуть
+    if 'file' in data:
+        try:
+            file_data = data['file']
+            header, b64data = file_data.split(',', 1)
+            img_bytes = base64.b64decode(b64data)
+            image = Image.open(io.BytesIO(img_bytes))
+            anonymized = blur_jpg_pillow(image)
+            buf = io.BytesIO()
+            anonymized.save(buf, format='PNG')
+            buf.seek(0)
+            img_base64 = base64.b64encode(buf.read()).decode('utf-8')
+            return jsonify({'reply': 'data:image/png;base64,' + img_base64})
+        except Exception as e:
+            return jsonify({'reply': f'Ошибка обработки изображения: {e}'})
+    # Если текст — анонимизировать
+    if message and message.strip():
+        anon = simple_anon_text(message)
+        return jsonify({'reply': anon})
+    return jsonify({'reply': 'Пожалуйста, введите сообщение или отправьте файл.'})
 
 @app.route('/favicon.ico')
 def favicon():
