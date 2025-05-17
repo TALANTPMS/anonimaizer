@@ -15,6 +15,7 @@ from docx import Document
 from google.cloud import vision
 from google.cloud.vision_v1 import types
 from dotenv import load_dotenv
+from werkzeug.middleware.proxy_fix import ProxyFix
 
 # --- ENVIRONMENT SETUP ---
 load_dotenv()
@@ -29,6 +30,7 @@ if not GEMINI_API_KEY:
 # --- FLASK APP ---
 app = Flask(__name__)
 CORS(app, resources={r"/*": {"origins": "*"}})
+app.wsgi_app = ProxyFix(app.wsgi_app, x_proto=1, x_host=1)
 
 # --- GEMINI AI CONFIG ---
 GEMINI_API_URL = f'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key={GEMINI_API_KEY}'
@@ -305,4 +307,8 @@ def static_proxy(path):
     return send_from_directory('.', path)
 
 if __name__ == '__main__':
+    # Для локальной разработки
     app.run(host="0.0.0.0", port=5000, debug=False)
+else:
+    # Для Vercel
+    app = app.wsgi_app
