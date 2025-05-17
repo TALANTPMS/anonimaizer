@@ -9,6 +9,9 @@ from PyPDF2 import PdfReader
 from docx import Document
 from PIL import Image, ImageFilter
 
+import logging
+logging.basicConfig(level=logging.INFO)
+
 # --- ENVIRONMENT ---
 GOOGLE_APPLICATION_CREDENTIALS = os.environ.get("GOOGLE_APPLICATION_CREDENTIALS")
 GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY")
@@ -32,8 +35,11 @@ def simple_anon_text(text):
     return text
 
 def blur_jpg_pillow(image_pil):
-    # Примитивный блюр всего изображения (или можно реализовать crop/box)
-    return image_pil.filter(ImageFilter.GaussianBlur(radius=16))
+    try:
+        return image_pil.filter(ImageFilter.GaussianBlur(radius=16))
+    except Exception as e:
+        logging.error(f"Ошибка блюра изображения: {e}")
+        raise
 
 @app.route('/anon_text', methods=['POST'])
 def anon_text():
@@ -82,7 +88,10 @@ def anon_file():
     # Изображения (JPG, JPEG, PNG)
     elif filename.endswith(('.jpg', '.jpeg', '.png')):
         try:
+            file.stream.seek(0)
             image = Image.open(file.stream)
+            if image.format not in ['JPEG', 'JPG', 'PNG']:
+                return jsonify({'error': 'Файл не является поддерживаемым изображением (JPG/PNG).'}), 400
             anonymized = blur_jpg_pillow(image)
             buf = io.BytesIO()
             anonymized.save(buf, format='PNG')
@@ -90,6 +99,7 @@ def anon_file():
             img_base64 = base64.b64encode(buf.read()).decode('utf-8')
             return jsonify({'result': 'data:image/png;base64,' + img_base64})
         except Exception as e:
+            logging.error(f"Ошибка обработки изображения: {e}")
             return jsonify({'error': f'Ошибка обработки изображения: {e}'}), 400
     else:
         return jsonify({'error': 'Поддерживаются только TXT, PDF, DOCX, JPG, PNG файлы'}), 400
@@ -105,6 +115,8 @@ def chat():
             header, b64data = file_data.split(',', 1)
             img_bytes = base64.b64decode(b64data)
             image = Image.open(io.BytesIO(img_bytes))
+            if image.format not in ['JPEG', 'JPG', 'PNG']:
+                return jsonify({'reply': 'Файл не является поддерживаемым изображением (JPG/PNG).'})
             anonymized = blur_jpg_pillow(image)
             buf = io.BytesIO()
             anonymized.save(buf, format='PNG')
@@ -112,6 +124,7 @@ def chat():
             img_base64 = base64.b64encode(buf.read()).decode('utf-8')
             return jsonify({'reply': 'data:image/png;base64,' + img_base64})
         except Exception as e:
+            logging.error(f"Ошибка обработки изображения в чате: {e}")
             return jsonify({'reply': f'Ошибка обработки изображения: {e}'})
     # Если текст — анонимизировать
     if message and message.strip():
