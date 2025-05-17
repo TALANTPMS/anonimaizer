@@ -8,6 +8,7 @@ from flask_cors import CORS
 from PyPDF2 import PdfReader
 from docx import Document
 from PIL import Image, ImageFilter
+import requests
 
 import logging
 logging.basicConfig(level=logging.INFO)
@@ -25,20 +26,27 @@ except ImportError:
 # --- ENVIRONMENT ---
 GOOGLE_APPLICATION_CREDENTIALS = os.environ.get("GOOGLE_APPLICATION_CREDENTIALS")
 GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY")
+GEMINI_API_URL = f'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-pro:generateContent?key={GEMINI_API_KEY}'
 
 app = Flask(__name__, static_folder="../public", static_url_path="")
 CORS(app)
 
 # --- Текстовая анонимизация (простая, без внешних API) ---
 def simple_anon_text(text):
-    # Примитивные паттерны для ФИО, даты, номера, телефона, email, адреса
+    # Примитивные паттерны для ФИО, даты, номера, телефона, email, адреса, ИНН, офис, организация, номер договора/заявки/полиса
     patterns = [
         (r'[А-ЯЁ][а-яё]+ [А-ЯЁ][а-яё]+ [А-ЯЁ][а-яё]+', '[ФИО]'),
         (r'\d{2}\.\d{2}\.\d{4}', '[ДАТА]'),
         (r'\d{4} \d{4} \d{4} \d{4}', '[НОМЕР_ДОКУМЕНТА]'),
         (r'\+7\s?\(?\d{3}\)?\s?\d{3}-\d{2}-\d{2}', '[ТЕЛЕФОН]'),
         (r'[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}', '[EMAIL]'),
-        (r'г\.\s?[А-ЯЁ][а-яё]+,?\s+ул\.\s+[А-ЯЁа-яё\-]+,?\s+д\.\s*\d+', '[АДРЕС]')
+        (r'г\.\s?[А-ЯЁ][а-яё]+,?\s+ул\.\s+[А-ЯЁа-яё\-]+,?\s+д\.\s*\d+', '[АДРЕС]'),
+        (r'ИНН[:\s]*\d{10,12}', '[ИНН]'),
+        (r'офис\s*\d+', '[НОМЕР_ОФИСА]'),
+        (r'№[A-Za-zА-Яа-я0-9\-/]+', '[НОМЕР_ДОКУМЕНТА]'),
+        (r'Договор\s*№[A-Za-zА-Яа-я0-9\-/]+', '[НОМЕР_ДОГОВОРА]'),
+        (r'Полис\s*ОМС[:\s]*\d{4} \d{4} \d{4} \d{4}', '[НОМЕР_ПОЛИСА]'),
+        (r'ООО\s*"?[А-Яа-яA-Za-z0-9\s]+"?', '[НАЗВАНИЕ_ОРГАНИЗАЦИИ]')
     ]
     for pat, repl in patterns:
         text = re.sub(pat, repl, text)
@@ -71,8 +79,24 @@ def blur_faces_and_text(image_pil):
     try:
         data = pytesseract.image_to_data(image_pil, lang='rus+eng', output_type=Output.DICT)
         n_boxes = len(data['level'])
+        # Паттерны для поиска важных данных (ИНН, офис, номер договора/заявки/полиса, организация)
+        patterns = [
+            r'\d{4} \d{4} \d{4} \d{4}',  # Полис
+            r'ИНН[:\s]*\d{10,12}',       # ИНН
+            r'офис\s*\d+',               # офис
+            r'№[A-Za-zА-Яа-я0-9\-/]+',   # номер документа
+            r'Договор\s*№[A-Za-zА-Яа-я0-9\-/]+', # номер договора
+            r'Полис\s*ОМС[:\s]*\d{4} \d{4} \d{4} \d{4}', # номер полиса
+            r'ООО\s*"?[А-Яа-яA-Za-z0-9\s]+"?', # организация
+            r'\+7\s?\(?\d{3}\)?\s?\d{3}-\d{2}-\d{2}', # телефон
+            r'\d{2}\.\d{2}\.\d{4}',      # дата
+            r'[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}', # email
+        ]
         for i in range(n_boxes):
-            if data['text'][i].strip():
+            text_val = data['text'][i].strip()
+            if not text_val:
+                continue
+            if any(re.search(pat, text_val, re.IGNORECASE) for pat in patterns):
                 x, y, w, h = data['left'][i], data['top'][i], data['width'][i], data['height'][i]
                 if w > 0 and h > 0:
                     roi = image_cv[y:y+h, x:x+w]
@@ -83,6 +107,65 @@ def blur_faces_and_text(image_pil):
         logging.warning(f"OCR blur error: {e}")
     result_pil = Image.fromarray(cv2.cvtColor(image_cv, cv2.COLOR_BGR2RGB))
     return result_pil
+
+def gemini_blur_regions(image_pil):
+    # 1. OCR: получить текст и координаты блоков
+    try:
+        import pytesseract
+        from pytesseract import Output
+        import numpy as np
+        import cv2
+    except ImportError:
+        # Fallback: блюр всего изображения
+        return image_pil.filter(ImageFilter.GaussianBlur(radius=16))
+
+    image_np = np.array(image_pil.convert("RGB"))
+    image_cv = cv2.cvtColor(image_np, cv2.COLOR_RGB2BGR)
+    data = pytesseract.image_to_data(image_pil, lang='rus+eng', output_type=Output.DICT)
+    n_boxes = len(data['level'])
+    ocr_blocks = []
+    for i in range(n_boxes):
+        text_val = data['text'][i].strip()
+        if not text_val:
+            continue
+        x, y, w, h = data['left'][i], data['top'][i], data['width'][i], data['height'][i]
+        ocr_blocks.append({
+            "text": text_val,
+            "box": [int(x), int(y), int(w), int(h)]
+        })
+
+    # 2. Отправить в Gemini список блоков и получить список для блюра
+    prompt = (
+        "Вам дан список текстовых блоков с координатами (x, y, w, h) из OCR-анализа изображения. "
+        "Верните JSON-массив координат тех блоков, которые содержат персональные данные, номера, даты, время, ИНН, офисы, организации, ФИО, телефоны, email, адреса, номера договоров, заявки, счета, полиса, паспорта и т.д. "
+        "Пример ответа: [[x, y, w, h], ...]. "
+        "Вот список блоков:\n" + json.dumps(ocr_blocks, ensure_ascii=False)
+    )
+    headers = {'Content-Type': 'application/json'}
+    data_gemini = {"contents": [{"parts": [{"text": prompt}]}]}
+    try:
+        resp = requests.post(GEMINI_API_URL, headers=headers, json=data_gemini, timeout=60)
+        resp.raise_for_status()
+        result = resp.json()
+        # Ожидаем, что Gemini вернёт JSON-массив координат
+        reply = result['candidates'][0]['content']['parts'][0]['text']
+        # Извлечь массив координат из ответа
+        import ast
+        boxes = ast.literal_eval(reply)
+        # 3. Блюрить только указанные области
+        for box in boxes:
+            if len(box) == 4:
+                x, y, w, h = map(int, box)
+                roi = image_cv[y:y+h, x:x+w]
+                if roi.size > 0:
+                    blurred = cv2.GaussianBlur(roi, (31, 31), 0)
+                    image_cv[y:y+h, x:x+w] = blurred
+        result_pil = Image.fromarray(cv2.cvtColor(image_cv, cv2.COLOR_BGR2RGB))
+        return result_pil
+    except Exception as e:
+        logging.warning(f"Gemini blur fallback: {e}")
+        # Fallback: блюр всего изображения
+        return image_pil.filter(ImageFilter.GaussianBlur(radius=16))
 
 @app.route('/anon_text', methods=['POST'])
 def anon_text():
@@ -135,10 +218,7 @@ def anon_file():
             image = Image.open(file.stream)
             if image.format not in ['JPEG', 'JPG', 'PNG']:
                 return jsonify({'error': 'Файл не является поддерживаемым изображением (JPG/PNG).'}), 400
-            if IMAGE_ADVANCED_SUPPORT:
-                anonymized = blur_faces_and_text(image)
-            else:
-                return jsonify({'error': 'Image anonymization is not supported: OpenCV/numpy/pytesseract not installed.'}), 400
+            anonymized = gemini_blur_regions(image)
             buf = io.BytesIO()
             anonymized.save(buf, format='PNG')
             buf.seek(0)
