@@ -1,9 +1,4 @@
 flask>=2.2
 flask-cors>=3.0
 PyPDF2>=3.0
-pillow>=9.0
 python-docx>=0.8
-numpy>=1.24
-# opencv-python-headless и pytesseract закомментированы для Vercel, раскомментируйте если нужны и поддерживаются
-# opencv-python-headless
-# pytesseract

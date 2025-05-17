@@ -7,4 +7,3 @@ venv/
 /credentials/
 credentials/*
 .env
-/public/
