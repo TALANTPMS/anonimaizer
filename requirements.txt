@@ -6,3 +6,4 @@ python-docx==0.8.11
 numpy==1.24.3
 opencv-python-headless
 pytesseract==0.3.10
+gunicorn
