@@ -5,7 +5,7 @@ import base64
 import json
 import numpy as np
 import cv2
-from flask import Flask, request, jsonify, send_file
+from flask import Flask, request, jsonify, send_file, send_from_directory
 from flask_cors import CORS
 from PIL import Image
 from PyPDF2 import PdfReader
@@ -139,16 +139,17 @@ def favicon():
 
 @app.route('/')
 def home():
-    # Путь к index.html относительно этого файла
-    index_path = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'index.html'))
-    return send_file(index_path)
+    # Корректно отдаём index.html из родительской директории
+    parent_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
+    return send_from_directory(parent_dir, 'index.html')
 
 @app.route('/<path:path>')
 def static_proxy(path):
-    # Позволяет отдавать любые статические файлы из корня проекта
-    file_path = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', path))
+    # Корректно отдаём любые статические файлы из родительской директории
+    parent_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
+    file_path = os.path.join(parent_dir, path)
     if os.path.isfile(file_path):
-        return send_file(file_path)
+        return send_from_directory(parent_dir, path)
     return 'Not Found', 404
 
 # Vercel: экспортируем Flask app
