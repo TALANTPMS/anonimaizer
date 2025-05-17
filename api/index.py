@@ -1,26 +1,12 @@
-from flask import Flask, request, jsonify
-from flask_cors import CORS
+import sys
+import os
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+from action import app as flask_app
 
-app = Flask(__name__)
-CORS(app)
-
-@app.route('/anon_text', methods=['POST'])
-def anon_text():
-    data = request.get_json()
-    text = data.get('text', '')
-    if not text:
-        return jsonify({'result': ''})
-    # Simple anonymization for testing
-    return jsonify({'result': '[Анонимизированный текст]'})
-
-@app.route('/')
-def home():
-    return 'API is running'
-
-# For Vercel serverless function
 def handler(request):
-    return app
-
-# For local development
-if __name__ == '__main__':
-    app.run()
+    """
+    Handle Vercel serverless function requests
+    """
+    if request.method == "POST":
+        return flask_app.view_functions['anon_text']()
+    return flask_app.view_functions['home']()
